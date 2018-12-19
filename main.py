@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-
+from tensorboardX import SummaryWriter
 
 class Net(nn.Module):
     def __init__(self):
@@ -27,6 +27,7 @@ class Net(nn.Module):
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
+    train_loss = 0.
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -34,10 +35,12 @@ def train(args, model, device, train_loader, optimizer, epoch):
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
+        train_loss += loss.item()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()))
+    return train_loss
 
 
 def test(args, model, device, test_loader):
@@ -53,13 +56,16 @@ def test(args, model, device, test_loader):
             correct += pred.eq(target.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
-
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
         test_loss, correct, len(test_loader.dataset),
         100. * correct / len(test_loader.dataset)))
+    accuracy = 100. * correct / len(test_loader.dataset)
+    return test_loss, accuracy
 
 
 def main():
+    writer = SummaryWriter()
+
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
@@ -107,12 +113,18 @@ def main():
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
     for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(args, model, device, test_loader)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch)
+        writer.add_scalar('data/train_loss', train_loss, epoch)
+        test_loss, accuracy = test(args, model, device, test_loader)
+        writer.add_scalar('data/test_loss', test_loss, epoch)
+        writer.add_scalar('data/accuracy', accuracy, epoch)
+        for name, param in model.named_parameters():
+            writer.add_histogram(name, param.clone().cpu().data.numpy(), epoch)
 
     if (args.save_model):
         torch.save(model.state_dict(), "mnist_cnn.pt")
 
+    writer.close()
 
 if __name__ == '__main__':
     main()
