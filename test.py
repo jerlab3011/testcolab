@@ -1,3 +1,6 @@
+from src import utils
+
 def test_py_import():
-    print("py import is working !")
-    
+    utils.test_utils()
+
+test_py_import()
